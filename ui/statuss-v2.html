@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Iesnieguma statuss · Ezermalas novada pašvaldība</title>
+  <style>
+    :root {
+      --navy: #1D3557;
+      --teal: #2A9D8F;
+      --coral: #E76F51;
+      --bg: #F1F3F5;
+      --line: #C9CED6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: #1a1a1a;
+    }
+    header { background: var(--navy); color: #fff; padding: 16px; }
+    header h1 { margin: 0; font-size: 1.25rem; }
+    header p { margin: 4px 0 0; font-size: 0.85rem; opacity: 0.85; }
+    main { max-width: 720px; margin: 0 auto; padding: 16px; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    label { display: block; font-weight: 600; margin-top: 12px; }
+    input {
+      width: 100%; padding: 8px; margin-top: 4px; font: inherit;
+      border: 1px solid var(--line); border-radius: 6px; background: #fff;
+    }
+    button {
+      margin-top: 16px; padding: 10px 20px; font: inherit; font-weight: 600;
+      color: #fff; background: var(--teal); border: 0; border-radius: 6px; cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .message { padding: 12px; border-radius: 6px; margin-top: 16px; }
+    .message.error { background: #fdece7; border: 1px solid var(--coral); }
+    .message.ok { background: #e6f4f2; border: 1px solid var(--teal); }
+    dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 8px 0 0; }
+    dt { font-weight: 600; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    .note { display: block; font-size: 0.9rem; }
+    .overdue { color: var(--coral); font-weight: 700; }
+    footer { font-size: 0.8rem; color: #555; text-align: center; padding: 16px; }
+    a { color: var(--navy); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ezermalas novada pašvaldība · Iesnieguma statuss</h1>
+    <p>Mācību prototips. Pašvaldība ir izdomāta. Ievadiet tikai sintētiskus datus.</p>
+  </header>
+
+  <main>
+    <form id="status-form" class="card" novalidate>
+      <label for="submissionId">Iesnieguma numurs</label>
+      <input id="submissionId" name="submissionId" placeholder="IES-2026-000123" autocomplete="off">
+
+      <button type="submit" id="submit" disabled>Pārbaudīt</button>
+      <div id="message" aria-live="polite"></div>
+    </form>
+    <p><a href="/ui/">Iesniegt jaunu iesniegumu</a></p>
+  </main>
+
+  <footer>
+    <a href="/docs">Swagger UI (/docs)</a> · Ezermalas pieteikumu sistēma · mācību prototips
+  </footer>
+
+  <script>
+    const STATUS_TEXT = {
+      RECEIVED: "Saņemts",
+      IN_PROGRESS: "Izskatīšanā",
+      FORWARDED: "Pārsūtīts",
+      ANSWERED: "Atbildēts",
+      WITHDRAWN: "Atsaukts",
+    };
+    const NOT_FOUND_TEXT = "Iesniegums ar šādu numuru nav atrasts. Pārbaudiet numuru.";
+    const GENERIC_ERROR_TEXT = "Neizdevās ielādēt datus. Mēģiniet vēlreiz.";
+    const DAY_MS = 86400000;
+
+    const form = document.getElementById("status-form");
+    const input = document.getElementById("submissionId");
+    const message = document.getElementById("message");
+    const submitButton = document.getElementById("submit");
+
+    function formatDate(isoDate) {
+      const [year, month, day] = isoDate.split("-");
+      return `${day}.${month}.${year}`;
+    }
+
+    // Kalendārās dienas līdz termiņam. Abi datumi UTC pusnaktī, lai vasaras laiks neietekmē rezultātu.
+    function daysLeft(isoDate) {
+      const [year, month, day] = isoDate.split("-").map(Number);
+      const now = new Date();
+      const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+      return Math.round((Date.UTC(year, month - 1, day) - today) / DAY_MS);
+    }
+
+    function deadlineNote(days) {
+      if (days < 0) return "Termiņš nokavēts";
+      if (days === 0) return "Termiņš ir šodien";
+      if (days === 1) return "Atlikusi 1 diena";
+      return `Atlikušas ${days} dienas`;
+    }
+
+    function addRow(dl, term, ...content) {
+      const dt = document.createElement("dt");
+      dt.textContent = term;
+      const dd = document.createElement("dd");
+      dd.append(...content);
+      dl.append(dt, dd);
+    }
+
+    // Atbildētam iesniegumam rādām tikai datumu. Pārējiem statusiem (arī Atsaukts) rādām arī atlikušās dienas vai nokavējumu.
+    function deadlineContent(data) {
+      const date = formatDate(data.dueDate);
+      if (data.status === "ANSWERED") return [date];
+      const days = daysLeft(data.dueDate);
+      const note = document.createElement("span");
+      note.className = days < 0 ? "note overdue" : "note";
+      note.textContent = deadlineNote(days);
+      return [date, note];
+    }
+
+    // Atbildē ir arī personas dati (pilns iesniegums), bet lapā rādām tikai numuru, statusu un termiņu.
+    function showResult(data) {
+      const title = document.createElement("strong");
+      title.textContent = "Iesniegums atrasts";
+      const dl = document.createElement("dl");
+      addRow(dl, "Numurs", data.id);
+      addRow(dl, "Statuss", STATUS_TEXT[data.status] || data.status);
+      addRow(dl, "Atbildes termiņš", ...deadlineContent(data));
+      message.className = "message ok";
+      message.replaceChildren(title, dl);
+    }
+
+    function showError(text) {
+      message.className = "message error";
+      message.textContent = text;
+    }
+
+    // Tukšs numurs aizietu uz saraksta galapunktu /submissions, tāpēc bez numura poga nav aktīva.
+    input.addEventListener("input", () => {
+      submitButton.disabled = input.value.trim() === "";
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const id = input.value.trim();
+      if (id === "") return;
+      message.className = "";
+      message.replaceChildren();
+      submitButton.disabled = true;
+      try {
+        const response = await fetch("/submissions/" + encodeURIComponent(id));
+        if (response.status === 200) {
+          showResult(await response.json());
+        } else if (response.status === 404) {
+          showError(NOT_FOUND_TEXT);
+        } else {
+          showError(GENERIC_ERROR_TEXT);
+        }
+      } catch (error) {
+        showError(GENERIC_ERROR_TEXT);
+      } finally {
+        submitButton.disabled = input.value.trim() === "";
+      }
+    });
+  </script>
+</body>
+</html>
