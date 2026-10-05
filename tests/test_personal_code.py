@@ -31,7 +31,7 @@ def test_valid_personal_code_is_saved_normalized(
     [
         "3200000000",  # 4: 10 cipari
         "320000000012",  # 5: 12 cipari
-        "3200000O001",  # 6: burts O, nevis nulle
+        "32000000O01",  # 6: burts O, nevis nulle
         "3200-0000001",  # 9: defise nepareizā vietā
     ],
 )
@@ -72,3 +72,12 @@ def test_omd_is_called_with_normalized_code(client, valid_payload, fake_omd):
     response = client.post("/submissions", json=valid_payload)
     assert response.json()["replyChannel"] == "E_ADDRESS"
     assert fake_omd.calls == ["32000000001"]
+
+
+def test_invalid_personal_code_is_not_echoed(client, valid_payload, caplog):
+    valid_payload["personalCode"] = "320000-0000X"
+    with caplog.at_level("DEBUG"):
+        response = client.post("/submissions", json=valid_payload)
+    assert response.status_code == 400
+    assert "0000X" not in response.text
+    assert "0000X" not in caplog.text
