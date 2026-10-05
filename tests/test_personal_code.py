@@ -33,6 +33,7 @@ def test_valid_personal_code_is_saved_normalized(
         "320000000012",  # 5: 12 cipari
         "32000000O01",  # 6: burts O, nevis nulle
         "3200-0000001",  # 9: defise nepareizā vietā
+        "320000 00001",  # atstarpe koda vidū
     ],
 )
 def test_invalid_personal_code_returns_invalid_format(
