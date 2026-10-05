@@ -1,9 +1,15 @@
 """Datu modeļi pēc API līguma (API contract) docs/openapi.yaml."""
 
+import re
 from datetime import date, datetime
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+from pydantic_core import PydanticCustomError
+
+# Personas kods (CR-1): 11 cipari, pēc izvēles ar defisi aiz 6. cipara.
+# [0-9], nevis \d, jo \d atļauj arī citu rakstību ciparus.
+PERSONAL_CODE_PATTERN = re.compile(r"[0-9]{6}-?[0-9]{5}")
 
 
 class PreferredChannel(str, Enum):
@@ -57,6 +63,16 @@ class SubmissionCreate(BaseModel):
     topic: Topic
     subject: str
     body: str
+
+    @field_validator("personalCode")
+    @classmethod
+    def normalize_personal_code(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise PydanticCustomError("required", "Personal code is required")
+        if not PERSONAL_CODE_PATTERN.fullmatch(value):
+            raise PydanticCustomError("invalid_format", "Invalid personal code")
+        return value.replace("-", "")
 
 
 class SubmissionCreated(BaseModel):
