@@ -18,7 +18,7 @@ def _field(error: dict) -> str:
 
 
 def _issue(error: dict) -> str:
-    if error["type"] == "missing":
+    if error["type"] in ("missing", "required"):
         return "REQUIRED"
     if error["type"] == "string_too_long":
         return "TOO_LONG"
