@@ -33,6 +33,7 @@ def test_valid_personal_code_is_saved_normalized(
         "320000000012",  # 5: 12 cipari
         "32000000O01",  # 6: burts O, nevis nulle
         "3200-0000001",  # 9: defise nepareizā vietā
+        "320000 00001",  # atstarpe koda vidū
     ],
 )
 def test_invalid_personal_code_returns_invalid_format(
@@ -81,3 +82,13 @@ def test_invalid_personal_code_is_not_echoed(client, valid_payload, caplog):
     assert response.status_code == 400
     assert "0000X" not in response.text
     assert "0000X" not in caplog.text
+
+
+def test_valid_personal_code_is_not_logged(client, valid_payload, caplog):
+    valid_payload["personalCode"] = "320000-00001"
+    with caplog.at_level("DEBUG"):
+        response = client.post("/submissions", json=valid_payload)
+    assert response.status_code == 201
+    assert response.json()["id"] in caplog.text
+    assert "32000000001" not in caplog.text
+    assert "320000-00001" not in caplog.text
