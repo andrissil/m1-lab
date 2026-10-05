@@ -81,3 +81,13 @@ def test_invalid_personal_code_is_not_echoed(client, valid_payload, caplog):
     assert response.status_code == 400
     assert "0000X" not in response.text
     assert "0000X" not in caplog.text
+
+
+def test_valid_personal_code_is_not_logged(client, valid_payload, caplog):
+    valid_payload["personalCode"] = "320000-00001"
+    with caplog.at_level("DEBUG"):
+        response = client.post("/submissions", json=valid_payload)
+    assert response.status_code == 201
+    assert response.json()["id"] in caplog.text
+    assert "32000000001" not in caplog.text
+    assert "320000-00001" not in caplog.text
